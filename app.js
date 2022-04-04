@@ -1,7 +1,6 @@
-//jshint esversion:6
-
 const express = require('express');
 const mongoose = require('mongoose');
+const _ = require('lodash');
 
 const app = express();
 const init = new Date();
@@ -77,50 +76,76 @@ app.get('/', function(req, res) {
   });
 });
 
-app.get('/category/:customListName', (req, res) => {
-  const customListName = req.params.customListName;
+app.get('/:customListName', (req, res) => {
+  const customListName = _.capitalize(req.params.customListName);
 
-  const list = new List({
-    name: customListName,
-    items: defaultItems
+  List.findOne({name: customListName}, (err, foundList) => {
+    if (!err) {
+      if (!foundList) {
+        //Create a new list
+        const list = new List({
+          name: customListName,
+          items: defaultItems
+        });
+        list.save();
+        res.redirect('/' + customListName);
+      } else {
+        //Show an existing list
+        res.render('list', {
+          listTitle: foundList.name,
+          newListItems: foundList.items
+        });
+      }
+    };
   });
-
-  list.save();
 });
 
 app.post('/', (req, res) => {
 
   const itemName = req.body.newItem;
+  const listName = req.body.list;
 
   const item = new Item({
     name: itemName
   });
 
-  item.save();
-
-  res.redirect('/');
-
+  if(listName === "Today"){
+    item.save();
+    res.redirect('/');
+  } else {
+    List.findOne({name: listName}, (err, foundList) => {
+      foundList.items.push(item);
+      foundList.save();
+      res.redirect('/' + listName);
+    });
+  }
 });
 
 app.post('/delete', (req, res) => {
   const checkedItemId = req.body.checkbox;
+  const listName = req.body.listName;
 
-  Item.findByIdAndRemove(checkedItemId, (err) => {
-    if (!err) {
-      console.log("Successfully deleted checked item from todolistDB.");
-    } else (
-      console.log(err)
-    )
-  });
-
-  res.redirect('/');
+  if (listName === "Today") {
+    Item.findByIdAndRemove(checkedItemId, (err) => {
+      if (!err) {
+        console.log("Successfully deleted checked item from todolistDB.");
+        res.redirect('/');
+      }
+    });
+  } else {
+    List.findOneAndUpdate(
+      {name: listName},
+      {$pull: {items: {_id: checkedItemId}}},
+      (err, foundList) => {
+        if (!err) {
+          res.redirect('/' + listName);
+        } else {
+          console.log(err);
+        }
+      }
+    );
+  }
 });
-
-// app.post('/work', function(req, res) {
-//   let item = req.body.newItem;
-//   workItems.push(item);
-//   res.redirect('/work');
-// });
 
 app.get('/about', (req, res) => {
   res.render('about');
